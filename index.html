@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WealthFlow 專屬記帳</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+    body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  </style>
+</head>
+<body class="bg-gray-50/50 text-gray-800 font-sans pb-20">
+  
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect } = React;
+
+    const Icons = {
+      PieChart: () => <span>📊</span>,
+      Activity: () => <span>📈</span>,
+      RefreshCw: () => <span>🔄</span>,
+      Wallet: () => <span>💼</span>,
+      Landmark: () => <span>🏦</span>,
+      Target: () => <span>🎯</span>,
+      Calendar: () => <span>📅</span>,
+      Plus: () => <span>➕</span>,
+      Trash2: () => <span>🗑️</span>,
+      Edit2: () => <span>✏️</span>,
+      ChevronDown: () => <span>🔽</span>,
+      ChevronUp: () => <span>🔼</span>,
+      ArrowRightLeft: () => <span>🔁</span>,
+      TrendingUp: () => <span>🚀</span>,
+      AlertCircle: () => <span>⚠️</span>,
+      Check: () => <span>✅</span>,
+      DollarSign: () => <span>💲</span>,
+      Home: () => <span>🏠</span>,
+      AlertTriangle: () => <span>🚨</span>,
+      Briefcase: () => <span>💼</span>
+    };
+
+    const Card = ({ children, className = '', onClick }) => (
+      <div onClick={onClick} className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden ${className} ${onClick ? 'cursor-pointer' : ''}`}>
+        {children}
+      </div>
+    );
+
+    const Button = ({ children, onClick, variant = 'primary', className = '', icon, size = 'md' }) => {
+      const baseStyle = "inline-flex items-center justify-center font-bold transition-all duration-200 active:scale-95 rounded-xl";
+      const sizes = { sm: "px-3 py-1.5 text-xs", md: "px-4 py-2 text-sm", lg: "px-6 py-3 text-base" };
+      const variants = {
+        primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm",
+        secondary: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm",
+        outline: "border-2 border-gray-200 hover:border-blue-600 text-gray-700 hover:text-blue-600 bg-white",
+        danger: "bg-red-500 hover:bg-red-600 text-white shadow-sm",
+        ghost: "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+      };
+      const IconComponent = Icons[icon];
+      return (
+        <button onClick={onClick} className={`${baseStyle} ${sizes[size]} ${variants[variant]} ${className}`}>
+          {IconComponent && <span className="mr-2"><IconComponent /></span>}
+          {children}
+        </button>
+      );
+    };
+
+    const Modal = ({ isOpen, onClose, title, children }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="font-black text-xl text-gray-800">{title}</h3>
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full w-8 h-8 flex items-center justify-center font-bold">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    function FinancialTracker() {
+      const [activeTab, setActiveTab] = useState('overview');
+      
+      const loadData = (key, defaultVal) => {
+        try { const saved = localStorage.getItem(key); return saved ? JSON.parse(saved) : defaultVal; } 
+        catch (e) { return defaultVal; }
+      };
+
+      const [cash, setCash] = useState(() => loadData('wf_cash', { capReserve: 0, general: 0, interestReserve: 0 }));
+      const [assets, setAssets] = useState(() => loadData('wf_assets', []));
+      const [debts, setDebts] = useState(() => loadData('wf_debts', []));
+      const [projects, setProjects] = useState(() => loadData('wf_projects', []));
+      const [savings, setSavings] = useState(() => loadData('wf_savings', []));
+      const [calendarRecords, setCalendarRecords] = useState(() => loadData('wf_calendar', {}));
+
+      useEffect(() => { localStorage.setItem('wf_cash', JSON.stringify(cash)); }, [cash]);
+      useEffect(() => { localStorage.setItem('wf_assets', JSON.stringify(assets)); }, [assets]);
+      useEffect(() => { localStorage.setItem('wf_debts', JSON.stringify(debts)); }, [debts]);
+      useEffect(() => { localStorage.setItem('wf_projects', JSON.stringify(projects)); }, [projects]);
+      useEffect(() => { localStorage.setItem('wf_savings', JSON.stringify(savings)); }, [savings]);
+      useEffect(() => { localStorage.setItem('wf_calendar', JSON.stringify(calendarRecords)); }, [calendarRecords]);
+
+      const [expandedAsset, setExpandedAsset] = useState(null);
+      const [expandedSaving, setExpandedSaving] = useState(null);
+      
+      // 新增日曆真實時間狀態
+      const [calendarMode, setCalendarMode] = useState('A');
+      const [calendarDate, setCalendarDate] = useState(new Date());
+
+      const [modals, setModals] = useState({
+        addAsset: false, buyAsset: false, sellAsset: false, dividend: false,
+        addDebt: false, addProject: false, addSaving: false, savingAction: false, payInterest: false, editRecord: false
+      });
+
+      const [cashModal, setCashModal] = useState({ isOpen: false, capReserve: 0, general: 0, interestReserve: 0 });
+      const [assetForm, setAssetForm] = useState({ group: 'A', type: 'high_div', name: '' });
+      const [buyForm, setBuyForm] = useState({ assetId: null, date: '', price: '', shares: '', useReserve: false });
+      const [sellForm, setSellForm] = useState({ assetId: null, date: '', sellPrice: '', sellShares: '' });
+      const [divForm, setDivForm] = useState({ amount: '', sourceGroup: 'A' });
+      const [debtForm, setDebtForm] = useState({ name: '', principal: '', rate: '', startDate: '', type: 'pledge' });
+      const [projectForm, setProjectForm] = useState({ name: '', amount: '', rate: '' });
+      const [savingForm, setSavingForm] = useState({ name: '', rate: '' });
+      const [savingActionForm, setSavingActionForm] = useState({ id: null, type: 'deposit', amount: '', date: '' });
+      const [interestPayForm, setInterestPayForm] = useState({ targetId: '', targetType: '', amount: '' });
+      const [calForm, setCalForm] = useState({ isOpen: false, dateStr: '', amount: '', key: '' });
+      const [editRecordForm, setEditRecordForm] = useState({ assetId: null, recordId: null, date: '', price: '', shares: '', type: 'buy' });
+      const [msgBox, setMsgBox] = useState({ isOpen: false, text: '' });
+
+      const exportData = () => {
+        const data = { cash, assets, debts, projects, savings, calendarRecords };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `WealthFlow_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        setMsgBox({ isOpen: true, text: '備份檔案已成功下載！' });
+      };
+
+      const importData = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = JSON.parse(event.target.result);
+            if (data.cash) setCash(data.cash);
+            if (data.assets) setAssets(data.assets);
+            if (data.debts) setDebts(data.debts);
+            if (data.projects) setProjects(data.projects);
+            if (data.savings) setSavings(data.savings);
+            if (data.calendarRecords) setCalendarRecords(data.calendarRecords);
+            setMsgBox({ isOpen: true, text: '資料已成功還原！' });
+          } catch (err) {
+            setMsgBox({ isOpen: true, text: '檔案格式錯誤，還原失敗！' });
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = ''; 
+      };
+
+      const formatMoney = (num) => {
+        if (!num && num !== 0) return '$0';
+        return '$' + Number(num).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
+      };
+
+      const calculateFee = (price, shares) => Math.max(20, Math.floor(price * shares * 0.001425));
+      const calculateTax = (price, shares) => Math.floor(price * shares * 0.003);
+
+      const totalCash = Number(cash.capReserve) + Number(cash.general) + Number(cash.interestReserve);
+      
+      const totalAssetsValue = assets.reduce((sum, asset) => {
+        return sum + (asset.records || []).reduce((rSum, r) => rSum + (r.type === 'buy' ? (Number(r.cost) || 0) : -(Number(r.cost) || 0)), 0);
+      }, 0);
+      
+      const totalSavings = savings.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+      const totalAssets = totalCash + totalAssetsValue + totalSavings;
+      const totalDebt = debts.reduce((sum, d) => sum + Number(d.principal), 0) + projects.reduce((sum, p) => sum + Number(p.amount), 0);
+      const netWorth = totalAssets - totalDebt;
+
+      const monthlyDebtInterest = debts.reduce((sum, d) => sum + (Number(d.principal) * (Number(d.rate) / 100) / 12), 0);
+      const monthlyProjectInterest = projects.reduce((sum, p) => sum + (Number(p.amount) * (Number(p.rate) / 100) / 12), 0);
+      const totalMonthlyInterest = monthlyDebtInterest + monthlyProjectInterest;
+      
+      const earnedInterest = savings.reduce((sum, s) => sum + (s.records || []).filter(r => r.type === 'interest').reduce((rSum, r) => rSum + Number(r.amount), 0), 0);
+
+      const highDivAssets = assets.filter(a => a.group === 'A' && a.type === 'high_div');
+      const highCapAssets = assets.filter(a => a.group === 'A' && a.type === 'high_cap');
+      const highDivTotal = highDivAssets.reduce((sum, a) => sum + a.records.reduce((rSum, r) => rSum + (r.type === 'buy' ? r.cost : -r.cost), 0), 0);
+      const highCapTotal = highCapAssets.reduce((sum, a) => sum + a.records.reduce((rSum, r) => rSum + (r.type === 'buy' ? r.cost : -r.cost), 0), 0);
+      const totalBlockA = highDivTotal + highCapTotal;
+      const highDivPercent = totalBlockA > 0 ? Math.round((highDivTotal / totalBlockA) * 100) : 0;
+      const highCapPercent = totalBlockA > 0 ? Math.round((highCapTotal / totalBlockA) * 100) : 0;
+
+      const openModal = (modalName, extraData = {}) => {
+        setModals(prev => ({ ...prev, [modalName]: true }));
+        if (modalName === 'buyAsset') setBuyForm({ assetId: extraData.id, date: new Date().toISOString().split('T')[0], price: '', shares: '', useReserve: false });
+        if (modalName === 'sellAsset') setSellForm({ assetId: extraData.id, date: new Date().toISOString().split('T')[0], sellPrice: '', sellShares: '' });
+        if (modalName === 'savingAction') setSavingActionForm({ id: extraData.id, type: extraData.type || 'deposit', amount: '', date: new Date().toISOString().split('T')[0] });
+        if (modalName === 'dividend') setDivForm({ amount: '', sourceGroup: extraData.group || 'A' });
+      };
+      
+      const closeModal = (modalName) => setModals(prev => ({ ...prev, [modalName]: false }));
+
+      const handleSaveCash = () => {
+        setCash({ capReserve: Number(cashModal.capReserve), general: Number(cashModal.general), interestReserve: Number(cashModal.interestReserve) });
+        setCashModal(prev => ({ ...prev, isOpen: false }));
+      };
+
+      const handleAddAsset = () => {
+        if (!assetForm.name) return setMsgBox({ isOpen: true, text: '請輸入標的名稱！' });
+        setAssets(prev => [...prev, { id: Date.now().toString(), group: assetForm.group, type: assetForm.type, name: assetForm.name, records: [] }]);
+        setAssetForm(prev => ({ ...prev, name: '' })); 
+        closeModal('addAsset');
+      };
+
+      const handleBuyAsset = () => {
+        const numPrice = Number(buyForm.price);
+        const numShares = Number(buyForm.shares);
+        const targetId = buyForm.assetId;
+
+        if (!numPrice || !numShares) return setMsgBox({ isOpen: true, text: '請輸入有效的單價與股數！' });
+        if (!targetId) return setMsgBox({ isOpen: true, text: '系統錯誤：遺失標的ID' });
+
+        const fee = calculateFee(numPrice, numShares);
+        const totalCost = (numPrice * numShares) + fee;
+
+        setCash(prev => ({
+          ...prev,
+          capReserve: buyForm.useReserve ? prev.capReserve - totalCost : prev.capReserve,
+          general: buyForm.useReserve ? prev.general : prev.general - totalCost
+        }));
+
+        const newRecord = { id: Date.now().toString(), date: buyForm.date, price: numPrice, shares: numShares, fee, cost: totalCost, type: 'buy' };
+        setAssets(prev => prev.map(a => a.id === targetId ? { ...a, records: [...a.records, newRecord] } : a));
+        
+        setBuyForm({ assetId: null, date: '', price: '', shares: '', useReserve: false });
+        closeModal('buyAsset');
+      };
+
+      const handleSellAsset = () => {
+        const targetAsset = assets.find(a => a.id === sellForm.assetId);
+        if (!targetAsset) return setMsgBox({ isOpen: true, text: '系統錯誤：找不到該標的' });
+
+        const numPrice = Number(sellForm.sellPrice);
+        const numShares = Number(sellForm.sellShares);
+        if (!numPrice || !numShares) return setMsgBox({ isOpen: true, text: '請輸入有效的單價與股數！' });
+
+        const fee = calculateFee(numPrice, numShares);
+        const tax = calculateTax(numPrice, numShares);
+        const netIncome = (numPrice * numShares) - fee - tax;
+
+        const totalCurrentShares = targetAsset.records.reduce((sum, r) => sum + (r.type === 'buy' ? Number(r.shares) : -Number(r.shares)), 0);
+        const totalCurrentCost = targetAsset.records.reduce((sum, r) => sum + (r.type === 'buy' ? Number(r.cost) : -Number(r.cost)), 0);
+        const avgCostPerShare = totalCurrentShares > 0 ? totalCurrentCost / totalCurrentShares : 0;
+        const costToDeduct = avgCostPerShare * numShares;
+        const profit = netIncome - costToDeduct;
+
+        const newRecord = { id: Date.now().toString(), date: sellForm.date, price: numPrice, shares: numShares, fee, tax, income: netIncome, cost: costToDeduct, profit, type: 'sell' };
+        setAssets(prev => prev.map(a => a.id === sellForm.assetId ? { ...a, records: [...a.records, newRecord] } : a));
+
+        setCash(prev => ({ ...prev, general: prev.general + netIncome }));
+        setMsgBox({ isOpen: true, text: `結算成功！本金與獲利合計 ${formatMoney(netIncome)} 已退回【一般生活費/活存】池，請至總覽自由分配資金。` });
+        
+        setSellForm({ assetId: null, date: '', sellPrice: '', sellShares: '' });
+        closeModal('sellAsset');
+      };
+
+      const handleUpdateRecord = () => {
+        const { assetId, recordId, date, price, shares, type } = editRecordForm;
+        const numPrice = Number(price);
+        const numShares = Number(shares);
+        if (!numPrice || !numShares) return setMsgBox({ isOpen: true, text: '單價與股數不能為空！' });
+
+        setAssets(assets.map(a => {
+          if (a.id !== assetId) return a;
+          return {
+            ...a, records: a.records.map(r => {
+              if (r.id !== recordId) return r;
+              const fee = calculateFee(numPrice, numShares);
+              if (type === 'buy') {
+                return { ...r, date, price: numPrice, shares: numShares, fee, cost: (numPrice * numShares) + fee };
+              } else {
+                const tax = calculateTax(numPrice, numShares);
+                const netIncome = (numPrice * numShares) - fee - tax;
+                return { ...r, date, price: numPrice, shares: numShares, fee, tax, income: netIncome, profit: netIncome - r.cost };
+              }
+            })
+          };
+        }));
+        closeModal('editRecord');
+      };
+
+      const handleDeleteRecord = (assetId, recordId) => {
+        setAssets(assets.map(a => a.id === assetId ? { ...a, records: a.records.filter(r => r.id !== recordId) } : a));
+      };
+
+      const handleReceiveDividend = () => {
+        const amount = Number(divForm.amount);
+        if (!amount) return setMsgBox({ isOpen: true, text: '請輸入有效的金額！' });
+        setCash(prev => ({ ...prev, capReserve: prev.capReserve + amount }));
+        setMsgBox({ isOpen: true, text: `成功領取 ${formatMoney(amount)}！已全數自動存入【高市值預備金】等待佈局。` });
+        setDivForm(prev => ({ ...prev, amount: '' }));
+        closeModal('dividend');
+      };
+
+      const handlePayInterest = () => {
+        const amount = Number(interestPayForm.amount);
+        if (!amount) return;
+        setCash(prev => {
+          let remaining = amount;
+          let newInterestReserve = prev.interestReserve;
+          let newGeneral = prev.general;
+          if (newInterestReserve >= remaining) {
+            newInterestReserve -= remaining;
+          } else {
+            remaining -= newInterestReserve;
+            newInterestReserve = 0;
+            newGeneral -= remaining;
+          }
+          return { ...prev, interestReserve: newInterestReserve, general: newGeneral };
+        });
+        closeModal('payInterest');
+      };
+
+      const handleAddDebt = () => { setDebts([...debts, { id: Date.now().toString(), ...debtForm }]); closeModal('addDebt'); };
+      const handleAddProject = () => { setProjects([...projects, { id: Date.now().toString(), ...projectForm }]); closeModal('addProject'); };
+      const handleAddSaving = () => { setSavings([...savings, { id: Date.now().toString(), ...savingForm, balance: 0, records: [] }]); closeModal('addSaving'); };
+      
+      const handleSavingAction = () => {
+        const amount = Number(savingActionForm.amount);
+        if (!amount) return;
+        const record = { id: Date.now().toString(), date: savingActionForm.date, type: savingActionForm.type, amount };
+        setSavings(savings.map(s => {
+          if (s.id !== savingActionForm.id) return s;
+          let newBalance = Number(s.balance);
+          if (record.type === 'deposit') newBalance += amount;
+          if (record.type === 'withdraw') newBalance -= amount;
+          if (record.type === 'interest') newBalance += amount;
+          return { ...s, balance: newBalance, records: [...s.records, record] };
+        }));
+        closeModal('savingAction');
+      };
+
+      const checkPledgeWarning = (startDate) => {
+        if (!startDate) return null;
+        const start = new Date(startDate);
+        const now = new Date();
+        let nextRenewal = new Date(start);
+        while (nextRenewal <= now) nextRenewal.setMonth(nextRenewal.getMonth() + 6);
+        const diffDays = Math.ceil((nextRenewal - now) / (1000 * 60 * 60 * 24));
+        return { date: nextRenewal.toISOString().split('T')[0], days: diffDays, isWarning: diffDays <= 30 };
+      };
+
+      const renderAssetList = (assetList, groupTitle, groupId, typeId) => {
+        const groupTotal = assetList.reduce((sum, a) => sum + a.records.reduce((rs, r) => rs + (r.type === 'buy' ? r.cost : -r.cost), 0), 0);
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center mb-4 border-b border-gray-200 pb-2">
+              <h3 className="font-bold text-gray-800 flex items-center">
+                 {groupTitle}
+                 <span className="ml-3 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md text-xs font-bold border border-gray-200">
+                   合計: {formatMoney(groupTotal)}
+                 </span>
+              </h3>
+              <Button size="sm" variant="outline" onClick={() => { setAssetForm({ group: groupId, type: typeId, name: '' }); openModal('addAsset'); }} icon="Plus">新增標的</Button>
+            </div>
+            {assetList.map(asset => {
+              const tShares = asset.records.reduce((sum, r) => sum + (r.type === 'buy' ? Number(r.shares) : -Number(r.shares)), 0);
+              const tCost = asset.records.reduce((sum, r) => sum + (r.type === 'buy' ? Number(r.cost) : -Number(r.cost)), 0);
+              const avgCost = tShares > 0 ? (tCost / tShares).toFixed(2) : 0;
+              const isExpanded = expandedAsset === asset.id;
+              const ChevronIcon = isExpanded ? Icons.ChevronUp : Icons.ChevronDown;
+
+              return (
+                <div key={asset.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50" onClick={() => setExpandedAsset(isExpanded ? null : asset.id)}>
+                    <div className="flex items-center space-x-3">
+                      <span className="text-gray-400"><ChevronIcon /></span>
+                      <div className="font-bold text-lg text-gray-800">{asset.name}</div>
+                      {tShares > 0 && <div className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">{tShares} 股</div>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right mr-4 hidden sm:block">
+                        <div className="font-bold text-gray-800">{formatMoney(tCost)}</div>
+                        <div className="text-xs text-gray-500">投入總額</div>
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openModal('buyAsset', {id: asset.id}); }} className="text-blue-600 bg-blue-50">買入</Button>
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openModal('sellAsset', {id: asset.id}); }} className="text-purple-600 bg-purple-50">賣出</Button>
+                    </div>
+                  </div>
+                  
+                  {isExpanded && (
+                    <div className="bg-gray-50 p-4 border-t border-gray-200">
+                       <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-200 mb-3 text-sm">
+                          <span className="font-bold text-gray-600">部位總結</span>
+                          <div className="space-x-4">
+                             <span>總股數: <strong className="text-gray-800">{tShares}</strong></span>
+                             <span>預估均價: <strong className="text-blue-600">{avgCost}</strong></span>
+                             <span>總成本: <strong className="text-gray-800">{formatMoney(tCost)}</strong></span>
+                          </div>
+                       </div>
+                       {asset.records.length === 0 ? <div className="text-center text-sm text-gray-500 py-4">尚無交易紀錄</div> : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm min-w-[400px]">
+                            <thead className="text-gray-500 border-b border-gray-200">
+                              <tr><th className="text-left py-2">日期</th><th className="text-right py-2">類型</th><th className="text-right py-2">單價/股數</th><th className="text-right py-2">金額/損益</th><th className="text-right py-2">操作</th></tr>
+                            </thead>
+                            <tbody>
+                              {asset.records.map(record => (
+                                <tr key={record.id} className="border-b border-gray-100 last:border-0">
+                                  <td className="py-3 text-gray-800 whitespace-nowrap">{record.date}</td>
+                                  <td className="py-3 text-right">
+                                     <span className={`px-2 py-1 rounded text-xs font-bold ${record.type === 'buy' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>{record.type === 'buy' ? '買入' : '賣出'}</span>
+                                  </td>
+                                  <td className="py-3 text-right text-gray-600">{record.price} x {record.shares}</td>
+                                  <td className="py-3 text-right">
+                                    {record.type === 'buy' ? (
+                                      <span className="text-gray-800 font-bold">{formatMoney(record.cost)}</span>
+                                    ) : (
+                                      <div>
+                                        <div className="text-gray-800 font-bold">{formatMoney(record.income)}</div>
+                                        <div className={`text-xs font-bold ${record.profit >= 0 ? 'text-red-500' : 'text-green-500'}`}>{record.profit >= 0 ? '+' : ''}{formatMoney(record.profit)}</div>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 text-right space-x-2">
+                                     <button onClick={() => { setEditRecordForm({ assetId: asset.id, recordId: record.id, date: record.date, price: record.price, shares: record.shares, type: record.type }); openModal('editRecord'); }} className="text-gray-400 hover:text-blue-600 p-1"><Icons.Edit2 /></button>
+                                     <button onClick={() => handleDeleteRecord(asset.id, record.id)} className="text-gray-400 hover:text-red-600 p-1"><Icons.Trash2 /></button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      };
+
+      const renderOverview = () => (
+        <div className="space-y-6 animate-in fade-in">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="p-6 border-t-4 border-t-blue-600 bg-gradient-to-br from-white to-blue-50/50">
+              <div className="text-sm text-gray-500 font-bold mb-2 flex items-center"><span className="mr-2"><Icons.PieChart /></span>系統總淨值 (Net Worth)</div>
+              <div className="text-4xl font-black text-gray-800 mb-2">{formatMoney(netWorth)}</div>
+              <div className="text-sm text-gray-500 flex justify-between border-t border-gray-100 pt-2 mt-2">
+                 <span>資產: {formatMoney(totalAssets)}</span><span className="text-red-500">負債: {formatMoney(totalDebt)}</span>
+              </div>
+            </Card>
+            <Card className="p-6 border-t-4 border-t-red-500 bg-gradient-to-br from-white to-red-50/50">
+              <div className="text-sm text-red-700 font-bold mb-2 flex items-center justify-between">
+                <span className="flex items-center"><span className="mr-2"><Icons.AlertCircle /></span>每月應繳利息總計</span>
+                <Button size="sm" variant="danger" onClick={() => openModal('payInterest')} icon="DollarSign">手動繳息</Button>
+              </div>
+              <div className="text-3xl font-black text-red-600 mb-1">{formatMoney(totalMonthlyInterest)} <span className="text-sm text-red-400 font-normal">/月</span></div>
+              <div className="text-xs text-red-500 bg-red-50 p-2 rounded-lg mt-2 flex justify-between">
+                 <span>投資借貸: {formatMoney(monthlyDebtInterest)}</span><span>專案開銷: {formatMoney(monthlyProjectInterest)}</span>
+              </div>
+            </Card>
+          </div>
+
+          <Card className="p-0 overflow-hidden shadow-sm">
+             <div className="p-5 bg-gray-800 text-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+               <div>
+                 <h3 className="text-2xl font-black flex items-center"><span className="mr-2"><Icons.Wallet /></span>總可用現金池：{formatMoney(totalCash)}</h3>
+                 <p className="text-sm text-gray-300 mt-1">統一管理現金流。從這裡分配款項到下方的虛擬口袋。</p>
+               </div>
+               <Button className="bg-white/20 hover:bg-white/30 border-none shadow-none text-white whitespace-nowrap" onClick={() => setCashModal({ isOpen: true, ...cash })} icon="Edit2">分配 / 校正金額</Button>
+             </div>
+             <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+               <div className="p-5 bg-blue-50/50">
+                  <div className="text-sm text-blue-800 font-bold mb-1 flex items-center"><span className="mr-1.5"><Icons.Target /></span>高市值預備金</div>
+                  <div className="text-2xl font-black text-blue-900">{formatMoney(cash.capReserve)}</div>
+               </div>
+               <div className="p-5 bg-emerald-50/50">
+                  <div className="text-sm text-emerald-800 font-bold mb-1 flex items-center"><span className="mr-1.5"><Icons.Home /></span>一般生活費</div>
+                  <div className="text-2xl font-black text-emerald-900">{formatMoney(cash.general)}</div>
+               </div>
+               <div className="p-5 bg-orange-50/50">
+                  <div className="text-sm text-orange-800 font-bold mb-1 flex items-center"><span className="mr-1.5"><Icons.AlertTriangle /></span>繳息準備金</div>
+                  <div className="text-2xl font-black text-orange-900">{formatMoney(cash.interestReserve)}</div>
+               </div>
+             </div>
+          </Card>
+
+          <Card className="p-6">
+             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><span className="mr-2 text-blue-600"><Icons.PieChart /></span>長期存股配置比例</h3>
+             {totalBlockA === 0 ? <div className="text-sm text-gray-400 text-center py-4">尚無存股部位</div> : (
+               <div>
+                 <div className="flex justify-between text-sm font-bold mb-2">
+                   <div className="text-blue-700 flex flex-col"><span>高股息 {highDivPercent}%</span><span className="text-xs text-blue-500 font-normal">{formatMoney(highDivTotal)}</span></div>
+                   <div className="text-indigo-700 flex flex-col items-end"><span>高市值 {highCapPercent}%</span><span className="text-xs text-indigo-500 font-normal">{formatMoney(highCapTotal)}</span></div>
+                 </div>
+                 <div className="w-full h-4 bg-gray-100 rounded-full overflow-hidden flex">
+                   <div style={{width: `${highDivPercent}%`}} className="h-full bg-gradient-to-r from-blue-400 to-blue-600"></div>
+                   <div style={{width: `${highCapPercent}%`}} className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700"></div>
+                 </div>
+               </div>
+             )}
+          </Card>
+        </div>
+      );
+
+      const renderBlockA = () => (
+        <div className="space-y-8 animate-in fade-in">
+           <div className="flex justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+             <div>
+                <h2 className="text-xl font-black text-gray-800 flex items-center"><span className="mr-2 text-blue-600"><Icons.RefreshCw /></span>長期存股 (原 A 區)</h2>
+                <p className="text-sm text-gray-500 mt-1">核心持股只進不出。領取的股息會全數存入預備金等待逢低加碼。</p>
+             </div>
+             <Button onClick={() => openModal('dividend', {group: 'A'})} icon="RefreshCw">領取股息</Button>
+           </div>
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+             <Card className="p-6">{renderAssetList(assets.filter(a => a.group === 'A' && a.type === 'high_div'), '高股息標的', 'A', 'high_div')}</Card>
+             <Card className="p-6">{renderAssetList(assets.filter(a => a.group === 'A' && a.type === 'high_cap'), '高市值標的', 'A', 'high_cap')}</Card>
+           </div>
+        </div>
+      );
+
+      const renderBlockBC = () => (
+        <div className="space-y-8 animate-in fade-in">
+           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+             <div>
+                <h2 className="text-xl font-black text-gray-800 flex items-center"><span className="mr-2 text-purple-600"><Icons.Activity /></span>波段套利 (原 B/C 區)</h2>
+                <p className="text-sm text-gray-500 mt-1">運用借款或閒置資金低買高賣。獲利將全數退回總帳，由您決定如何運用。</p>
+             </div>
+           </div>
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+             <Card className="p-6 border-t-4 border-t-purple-500">
+               {renderAssetList(assets.filter(a => a.group === 'B'), '波段操作 (B區)', 'B', 'B')}
+             </Card>
+             <Card className="p-6 border-t-4 border-t-emerald-500">
+               <div className="flex justify-end mb-2">
+                 <Button size="sm" onClick={() => openModal('dividend', {group: 'C'})} variant="secondary" icon="RefreshCw">套利領息</Button>
+               </div>
+               {renderAssetList(assets.filter(a => a.group === 'C'), '除息套利 (C區)', 'C', 'C')}
+             </Card>
+           </div>
+        </div>
+      );
+
+      const renderSavings = () => {
+        const realInterestRate = totalDebt > 0 ? (((totalMonthlyInterest * 12) - earnedInterest) / totalDebt * 100).toFixed(2) : 0;
+        return (
+          <div className="space-y-6 animate-in fade-in">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="p-5 border-l-4 border-l-emerald-500">
+                <div className="text-sm font-bold text-gray-500 mb-1">活存總餘額</div>
+                <div className="text-2xl font-black text-emerald-700">{formatMoney(totalSavings)}</div>
+              </Card>
+              <Card className="p-5 border-l-4 border-l-blue-500">
+                <div className="text-sm font-bold text-gray-500 mb-1">已實領活存總孳息</div>
+                <div className="text-2xl font-black text-blue-700">{formatMoney(earnedInterest)}</div>
+              </Card>
+              <Card className="p-5 border-l-4 border-l-purple-500 bg-purple-50">
+                <div className="text-sm font-bold text-purple-700 mb-1">實質借款利率 (對沖後)</div>
+                <div className="text-2xl font-black text-purple-900">{totalDebt > 0 ? `${realInterestRate}%` : '無借款'}</div>
+              </Card>
+            </div>
+            <Card className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg text-gray-800 flex items-center"><span className="mr-2 text-emerald-600"><Icons.Landmark /></span>活存帳戶管理</h3>
+                <Button size="sm" onClick={() => openModal('addSaving')} icon="Plus">新增活存</Button>
+              </div>
+              <div className="space-y-4">
+                 {savings.map(s => {
+                   const isExpanded = expandedSaving === s.id;
+                   const ChevronIcon = isExpanded ? Icons.ChevronUp : Icons.ChevronDown;
+                   return (
+                     <div key={s.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="p-4 bg-white flex justify-between items-center cursor-pointer hover:bg-gray-50" onClick={() => setExpandedSaving(isExpanded ? null : s.id)}>
+                           <div className="flex items-center space-x-3">
+                             <span className="text-gray-400"><ChevronIcon /></span>
+                             <div>
+                                <div className="font-bold text-lg">{s.name}</div>
+                                <div className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded inline-block mt-1">年利 {s.rate}%</div>
+                             </div>
+                           </div>
+                           <div className="flex items-center space-x-4">
+                              <div className="text-right">
+                                 <div className="font-black text-gray-800 text-lg">{formatMoney(s.balance)}</div>
+                                 <div className="text-xs text-gray-500">帳戶餘額</div>
+                              </div>
+                              <div className="space-x-2 hidden sm:block">
+                                 <Button size="sm" variant="ghost" className="text-blue-600 bg-blue-50" onClick={(e) => {e.stopPropagation(); openModal('savingAction', {id: s.id, type: 'deposit'});}}>存入</Button>
+                                 <Button size="sm" variant="ghost" className="text-orange-600 bg-orange-50" onClick={(e) => {e.stopPropagation(); openModal('savingAction', {id: s.id, type: 'withdraw'});}}>挪用</Button>
+                                 <Button size="sm" variant="secondary" onClick={(e) => {e.stopPropagation(); openModal('savingAction', {id: s.id, type: 'interest'});}}>💰 領息</Button>
+                              </div>
+                           </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="bg-gray-50 p-4 border-t border-gray-200">
+                             {s.records.length === 0 ? <div className="text-center text-sm text-gray-500 py-2">尚無資金進出紀錄</div> : (
+                                <table className="w-full text-sm">
+                                  <thead className="text-gray-500 border-b border-gray-200">
+                                    <tr><th className="text-left py-2">日期</th><th className="text-center py-2">動作</th><th className="text-right py-2">金額</th></tr>
+                                  </thead>
+                                  <tbody>
+                                    {s.records.map(r => (
+                                      <tr key={r.id} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-2">{r.date}</td>
+                                        <td className="py-2 text-center">
+                                           {r.type === 'deposit' && <span className="text-blue-600 font-bold">存入</span>}
+                                           {r.type === 'withdraw' && <span className="text-orange-600 font-bold">挪用</span>}
+                                           {r.type === 'interest' && <span className="text-emerald-600 font-bold">利息入帳</span>}
+                                        </td>
+                                        <td className={`py-2 text-right font-bold ${r.type === 'withdraw' ? 'text-gray-800' : 'text-emerald-600'}`}>{r.type === 'withdraw' ? '-' : '+'}{formatMoney(r.amount)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                             )}
+                          </div>
+                        )}
+                     </div>
+                   );
+                 })}
+              </div>
+            </Card>
+          </div>
+        );
+      };
+
+      const renderDebts = () => (
+        <div className="space-y-6 animate-in fade-in">
+          <Card className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg text-gray-800 flex items-center"><span className="mr-2 text-red-600"><Icons.Briefcase /></span>投資借貸部位</h3>
+              <Button size="sm" variant="danger" onClick={() => openModal('addDebt')} icon="Plus">新增借貸</Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {debts.map(debt => {
+                const warning = debt.type === 'pledge' ? checkPledgeWarning(debt.startDate) : null;
+                return (
+                  <div key={debt.id} className={`p-4 rounded-xl border ${warning && warning.isWarning ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="font-bold text-gray-800 text-lg">{debt.name}</div>
+                      <button onClick={() => setDebts(debts.filter(d => d.id !== debt.id))} className="text-gray-400 hover:text-red-500"><Icons.Trash2 /></button>
+                    </div>
+                    <div className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded inline-block mb-3">年利 {debt.rate}%</div>
+                    <div className="flex justify-between items-end">
+                       <div>
+                         <div className="text-sm text-gray-500">借款本金</div>
+                         <div className="text-xl font-black text-gray-800">{formatMoney(debt.principal)}</div>
+                       </div>
+                       <div className="text-right">
+                         <div className="text-xs text-red-400">每月利息</div>
+                         <div className="font-bold text-red-600">{formatMoney(Number(debt.principal) * (Number(debt.rate)/100) / 12)}</div>
+                       </div>
+                    </div>
+                    {warning && (
+                       <div className={`mt-4 p-2 rounded-lg text-xs font-bold flex items-center ${warning.isWarning ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-gray-100 text-gray-600'}`}>
+                          {warning.isWarning && <span className="mr-1"><Icons.AlertTriangle /></span>}
+                          下次展延日: {warning.date} (剩餘 {warning.days} 天)
+                       </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      );
+
+      const renderProjects = () => (
+        <div className="space-y-6 animate-in fade-in">
+           <Card className="p-6">
+             <div className="flex justify-between items-center mb-6">
+               <h3 className="font-bold text-lg text-gray-800 flex items-center"><span className="mr-2 text-orange-600"><Icons.Target /></span>專案開銷 (大額質押花費)</h3>
+               <Button size="sm" onClick={() => openModal('addProject')} className="bg-orange-500 hover:bg-orange-600" icon="Plus">新增專案</Button>
+             </div>
+             <div className="overflow-x-auto">
+               <table className="w-full text-sm min-w-[500px]">
+                 <thead className="text-gray-500 border-b border-gray-200">
+                   <tr><th className="text-left py-2">專案名稱</th><th className="text-right py-2">動用金額</th><th className="text-right py-2">利率</th><th className="text-right py-2">每年利息</th><th className="text-right py-2">每月利息</th><th className="text-right py-2">操作</th></tr>
+                 </thead>
+                 <tbody>
+                   {projects.map(p => {
+                     const yearly = Number(p.amount) * (Number(p.rate)/100);
+                     return (
+                       <tr key={p.id} className="border-b border-gray-100">
+                         <td className="py-3 font-bold text-gray-800">{p.name}</td>
+                         <td className="py-3 text-right text-gray-800">{formatMoney(p.amount)}</td>
+                         <td className="py-3 text-right text-orange-600">{p.rate}%</td>
+                         <td className="py-3 text-right font-bold text-red-500">{formatMoney(yearly)}</td>
+                         <td className="py-3 text-right font-bold text-red-600">{formatMoney(yearly/12)}</td>
+                         <td className="py-3 text-right"><button onClick={() => setProjects(projects.filter(x => x.id !== p.id))} className="text-gray-400 hover:text-red-500"><Icons.Trash2 /></button></td>
+                       </tr>
+                     );
+                   })}
+                 </tbody>
+               </table>
+             </div>
+           </Card>
+        </div>
+      );
+
+      const renderCalendar = () => {
+        const year = calendarDate.getFullYear();
+        const month = calendarDate.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const firstDayOfWeek = new Date(year, month, 1).getDay();
+
+        const days = Array.from({length: daysInMonth}, (_, i) => i + 1);
+        const emptyCells = Array.from({length: firstDayOfWeek}, (_, i) => i);
+        const baseAmount = calendarMode === 'A' ? (totalBlockA || 1) : (totalDebt || 1);
+
+        const handlePrevMonth = () => {
+          const d = new Date(calendarDate);
+          d.setMonth(d.getMonth() - 1);
+          setCalendarDate(d);
+        };
+        const handleNextMonth = () => {
+          const d = new Date(calendarDate);
+          d.setMonth(d.getMonth() + 1);
+          setCalendarDate(d);
+        };
+
+        return (
+          <div className="space-y-6 animate-in fade-in">
+             <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200 w-max mx-auto mb-6">
+                <button onClick={() => setCalendarMode('A')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${calendarMode === 'A' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'}`}>長期存股</button>
+                <button onClick={() => setCalendarMode('BC')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${calendarMode === 'BC' ? 'bg-purple-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'}`}>波段套利</button>
+             </div>
+             <Card className="p-6">
+                <div className="flex justify-between items-center mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                   <button onClick={handlePrevMonth} className="px-4 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 font-bold text-gray-600">&lt;</button>
+                   <div className="text-center">
+                     <div className="font-black text-xl text-gray-800">{year}年 {month + 1}月</div>
+                     <div className="text-xs text-gray-500 mt-1">
+                        目前換算基準：<strong className="text-gray-800">{formatMoney(calendarMode === 'A' ? totalBlockA : totalDebt)}</strong>
+                     </div>
+                   </div>
+                   <button onClick={handleNextMonth} className="px-4 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 font-bold text-gray-600">&gt;</button>
+                </div>
+                <div className="grid grid-cols-7 gap-2">
+                   {['日', '一', '二', '三', '四', '五', '六'].map(d => <div key={d} className="text-center text-xs font-bold text-gray-400 pb-2">{d}</div>)}
+                   {emptyCells.map(e => <div key={`empty-${e}`} className="aspect-square"></div>)}
+                   {days.map(day => {
+                      const currentKey = `${calendarMode}-${year}-${month + 1}-${day}`;
+                      const legacyKey = `${calendarMode}-${day}`; // 兼容舊版測試資料
+                      const rec = calendarRecords[currentKey] || calendarRecords[legacyKey];
+                      
+                      const isProfit = rec && Number(rec.amount) > 0;
+                      const isLoss = rec && Number(rec.amount) < 0;
+                      
+                      let bgClass = "bg-white hover:bg-gray-50 border-gray-100";
+                      if (isProfit) bgClass = "bg-red-50 border-red-200";
+                      if (isLoss) bgClass = "bg-green-50 border-green-200";
+
+                      return (
+                         <div key={day} onClick={() => setCalForm({ isOpen: true, dateStr: `${month + 1}月${day}日`, amount: rec ? rec.amount : '', key: currentKey })} 
+                              className={`aspect-square border rounded-xl p-2 cursor-pointer transition-all flex flex-col items-center justify-center relative shadow-sm ${bgClass}`}>
+                            <span className="absolute top-1 left-2 text-xs font-bold text-gray-400">{day}</span>
+                            {rec && (
+                               <div className="text-center mt-3">
+                                  <div className={`text-sm font-black ${isProfit ? 'text-red-600' : 'text-green-600'}`}>{isProfit ? '+' : ''}{rec.amount}</div>
+                                  <div className={`text-[10px] font-bold ${isProfit ? 'text-red-400' : 'text-green-500'}`}>{isProfit ? '+' : ''}{rec.percent}%</div>
+                               </div>
+                            )}
+                         </div>
+                      );
+                   })}
+                </div>
+             </Card>
+          </div>
+        );
+      };
+
+      return (
+        <div>
+          <header className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
+            <div className="max-w-[1400px] mx-auto px-4 flex items-center justify-between h-16">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center"><span className="text-white">🚀</span></div>
+                <h1 className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-800 hidden sm:block">WealthFlow</h1>
+              </div>
+              <nav className="hidden lg:flex space-x-1">
+                {[
+                  { id: 'overview', label: '戰情總覽', icon: 'PieChart' },
+                  { id: 'blockA', label: '長期存股', icon: 'RefreshCw' },
+                  { id: 'blockBC', label: '波段套利', icon: 'Activity' },
+                  { id: 'savings', label: '活存管理', icon: 'Landmark' },
+                  { id: 'debts', label: '投資借貸', icon: 'Wallet' },
+                  { id: 'projects', label: '專案開銷', icon: 'Target' },
+                  { id: 'calendar', label: '投資日曆', icon: 'Calendar' }
+                ].map(t => {
+                  const NavIcon = Icons[t.icon];
+                  return (
+                    <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center ${activeTab === t.id ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}><span className="mr-2"><NavIcon/></span>{t.label}</button>
+                  );
+                })}
+                <div className="border-l border-gray-200 mx-2"></div>
+                <button onClick={exportData} className="px-3 py-2 rounded-lg text-sm font-bold text-gray-500 hover:bg-gray-100 flex items-center">匯出備份</button>
+                <label className="px-3 py-2 rounded-lg text-sm font-bold text-gray-500 hover:bg-gray-100 flex items-center cursor-pointer m-0">
+                  還原<input type="file" accept=".json" onChange={importData} className="hidden" />
+                </label>
+              </nav>
+            </div>
+          </header>
+
+          <div className="lg:hidden bg-white border-b border-gray-200 overflow-x-auto no-scrollbar sticky top-16 z-10 shadow-sm">
+            <div className="flex p-2 space-x-2 w-max px-4 items-center">
+               {[{id:'overview',label:'總覽'}, {id:'blockA',label:'存股'}, {id:'blockBC',label:'波段'}, {id:'savings',label:'活存'}, {id:'debts',label:'借貸'}, {id:'projects',label:'專案'}, {id:'calendar',label:'日曆'}].map(t => (
+                  <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-4 py-2 rounded-full text-sm font-bold ${activeTab === t.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>{t.label}</button>
+               ))}
+               <div className="border-l border-gray-300 h-6 mx-1"></div>
+               <button onClick={exportData} className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap">備份</button>
+               <label className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 cursor-pointer whitespace-nowrap m-0">
+                  還原<input type="file" accept=".json" onChange={importData} className="hidden" />
+               </label>
+            </div>
+          </div>
+
+          <main className="max-w-[1400px] mx-auto p-4 pt-6">
+            {activeTab === 'overview' && renderOverview()}
+            {activeTab === 'blockA' && renderBlockA()}
+            {activeTab === 'blockBC' && renderBlockBC()}
+            {activeTab === 'savings' && renderSavings()}
+            {activeTab === 'debts' && renderDebts()}
+            {activeTab === 'projects' && renderProjects()}
+            {activeTab === 'calendar' && renderCalendar()}
+          </main>
+
+          <Modal isOpen={cashModal.isOpen} onClose={() => setCashModal({ ...cashModal, isOpen: false })} title="統一現金池分配">
+            <div className="space-y-4">
+              <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-200">在此自由分配您的可用現金，作為心理帳戶防呆。</div>
+              <div><label className="block text-sm text-blue-700 font-bold mb-1">高市值預備金 (子彈)</label><input type="number" className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50" value={cashModal.capReserve} onChange={e => setCashModal({...cashModal, capReserve: e.target.value})} /></div>
+              <div><label className="block text-sm text-emerald-700 font-bold mb-1">一般生活費</label><input type="number" className="w-full px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50" value={cashModal.general} onChange={e => setCashModal({...cashModal, general: e.target.value})} /></div>
+              <div><label className="block text-sm text-orange-700 font-bold mb-1">繳息準備金</label><input type="number" className="w-full px-4 py-3 rounded-xl border border-orange-200 bg-orange-50" value={cashModal.interestReserve} onChange={e => setCashModal({...cashModal, interestReserve: e.target.value})} /></div>
+              <Button onClick={handleSaveCash} className="w-full py-3">儲存分配</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.addAsset} onClose={() => closeModal('addAsset')} title="新增標的">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">標的名稱</label><input type="text" className="w-full px-4 py-3 border rounded-xl" value={assetForm.name} onChange={e => setAssetForm({...assetForm, name: e.target.value})} /></div>
+              <Button onClick={handleAddAsset} className="w-full">建立標的</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.buyAsset} onClose={() => closeModal('buyAsset')} title="買入紀錄">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">日期</label><input type="date" className="w-full px-4 py-3 border rounded-xl" value={buyForm.date} onChange={e => setBuyForm({...buyForm, date: e.target.value})} /></div>
+              <div className="flex gap-4">
+                <div className="flex-1"><label className="block text-sm font-bold mb-1">單價</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={buyForm.price} onChange={e => setBuyForm({...buyForm, price: e.target.value})} /></div>
+                <div className="flex-1"><label className="block text-sm font-bold mb-1">股數</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={buyForm.shares} onChange={e => setBuyForm({...buyForm, shares: e.target.value})} /></div>
+              </div>
+              <div className="flex items-center gap-2 mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                <input type="checkbox" id="useRsv" className="w-4 h-4 text-blue-600 rounded border-gray-300" checked={buyForm.useReserve} onChange={e => setBuyForm({...buyForm, useReserve: e.target.checked})}/>
+                <label htmlFor="useRsv" className="text-sm font-bold text-blue-800">優先從「預備金」扣款 (預設從一般活存扣)</label>
+              </div>
+              <Button onClick={handleBuyAsset} className="w-full">確認買入</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.sellAsset} onClose={() => closeModal('sellAsset')} title="轉換 / 賣出紀錄">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">日期</label><input type="date" className="w-full px-4 py-3 border rounded-xl" value={sellForm.date} onChange={e => setSellForm({...sellForm, date: e.target.value})} /></div>
+              <div className="flex gap-4">
+                <div className="flex-1"><label className="block text-sm font-bold mb-1">賣出單價</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={sellForm.sellPrice} onChange={e => setSellForm({...sellForm, sellPrice: e.target.value})} /></div>
+                <div className="flex-1"><label className="block text-sm font-bold mb-1">賣出股數</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={sellForm.sellShares} onChange={e => setSellForm({...sellForm, sellShares: e.target.value})} /></div>
+              </div>
+              <Button onClick={handleSellAsset} className="w-full bg-purple-600">確認賣出結算</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.dividend} onClose={() => closeModal('dividend')} title="領取股息 (自動自循環)">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">實領股息總額</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={divForm.amount} onChange={e => setDivForm({...divForm, amount: e.target.value})} /></div>
+              <Button onClick={handleReceiveDividend} className="w-full">全數存入預備金</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.editRecord} onClose={() => closeModal('editRecord')} title="修改紀錄">
+            <div className="space-y-4">
+              <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded-lg font-bold">小提醒：修改紀錄不會自動退回活存餘額，請至總覽手動校正現金池。</div>
+              <div><label className="block text-sm font-bold mb-1">日期</label><input type="date" className="w-full px-4 py-3 border rounded-xl" value={editRecordForm.date} onChange={e => setEditRecordForm({...editRecordForm, date: e.target.value})} /></div>
+              <div className="flex gap-4">
+                <div className="flex-1"><label className="block text-sm font-bold mb-1">單價</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={editRecordForm.price} onChange={e => setEditRecordForm({...editRecordForm, price: e.target.value})} /></div>
+                <div className="flex-1"><label className="block text-sm font-bold mb-1">股數</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={editRecordForm.shares} onChange={e => setEditRecordForm({...editRecordForm, shares: e.target.value})} /></div>
+              </div>
+              <Button onClick={handleUpdateRecord} className="w-full">確認修改</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.addDebt} onClose={() => closeModal('addDebt')} title="新增借貸">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">借款名稱</label><input type="text" className="w-full px-4 py-2 border rounded-xl" value={debtForm.name} onChange={e => setDebtForm({...debtForm, name: e.target.value})}/></div>
+              <div><label className="block text-sm font-bold mb-1">類型</label><select className="w-full px-4 py-2 border rounded-xl" value={debtForm.type} onChange={e => setDebtForm({...debtForm, type: e.target.value})}><option value="pledge">股票質押</option><option value="mortgage">理財型房貸</option><option value="policy">保單借款</option></select></div>
+              <div><label className="block text-sm font-bold mb-1">金額</label><input type="number" className="w-full px-4 py-2 border rounded-xl" value={debtForm.principal} onChange={e => setDebtForm({...debtForm, principal: e.target.value})}/></div>
+              <div><label className="block text-sm font-bold mb-1">年利率 (%)</label><input type="number" step="0.01" className="w-full px-4 py-2 border rounded-xl" value={debtForm.rate} onChange={e => setDebtForm({...debtForm, rate: e.target.value})}/></div>
+              {debtForm.type === 'pledge' && (<div><label className="block text-sm font-bold mb-1">起始日 (計算展延用)</label><input type="date" className="w-full px-4 py-2 border rounded-xl" value={debtForm.startDate} onChange={e => setDebtForm({...debtForm, startDate: e.target.value})}/></div>)}
+              <Button onClick={handleAddDebt} variant="danger" className="w-full">新增借款</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.addProject} onClose={() => closeModal('addProject')} title="新增專案開銷">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">專案名稱</label><input type="text" className="w-full px-4 py-2 border rounded-xl" value={projectForm.name} onChange={e => setProjectForm({...projectForm, name: e.target.value})}/></div>
+              <div><label className="block text-sm font-bold mb-1">動用金額</label><input type="number" className="w-full px-4 py-2 border rounded-xl" value={projectForm.amount} onChange={e => setProjectForm({...projectForm, amount: e.target.value})}/></div>
+              <div><label className="block text-sm font-bold mb-1">年利率 (%)</label><input type="number" step="0.01" className="w-full px-4 py-2 border rounded-xl" value={projectForm.rate} onChange={e => setProjectForm({...projectForm, rate: e.target.value})}/></div>
+              <Button onClick={handleAddProject} className="w-full bg-orange-500">新增專案</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.payInterest} onClose={() => closeModal('payInterest')} title="手動繳息">
+            <div className="space-y-4">
+              <div>
+                 <label className="block text-sm font-bold mb-1">選擇繳納項目</label>
+                 <select className="w-full px-4 py-3 border rounded-xl" value={interestPayForm.targetId} onChange={e => { const id=e.target.value; const d=debts.find(x=>x.id===id); const p=projects.find(x=>x.id===id); let amt=''; if(d)amt=Math.round(Number(d.principal)*(Number(d.rate)/100)/12); if(p)amt=Math.round(Number(p.amount)*(Number(p.rate)/100)/12); setInterestPayForm({targetId: id, amount: amt}); }}>
+                   <option value="">-- 手動選擇 --</option>
+                   <optgroup label="投資借貸">{debts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</optgroup>
+                   <optgroup label="專案開銷">{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+                 </select>
+              </div>
+              <div><label className="block text-sm font-bold mb-1">實際繳納金額</label><input type="number" className="w-full px-4 py-3 border rounded-xl" value={interestPayForm.amount} onChange={e => setInterestPayForm({...interestPayForm, amount: e.target.value})} /></div>
+              <Button onClick={handlePayInterest} variant="danger" className="w-full">確認繳款</Button>
+            </div>
+          </Modal>
+          
+          <Modal isOpen={modals.addSaving} onClose={() => closeModal('addSaving')} title="新增活存帳戶">
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">銀行名稱</label><input type="text" className="w-full px-4 py-2 border rounded-xl" value={savingForm.name} onChange={e => setSavingForm({...savingForm, name: e.target.value})}/></div>
+              <div><label className="block text-sm font-bold mb-1">年利率 (%)</label><input type="number" step="0.01" className="w-full px-4 py-2 border rounded-xl" value={savingForm.rate} onChange={e => setSavingForm({...savingForm, rate: e.target.value})}/></div>
+              <Button onClick={handleAddSaving} variant="secondary" className="w-full">建立帳戶</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={modals.savingAction} onClose={() => closeModal('savingAction')} title="活存操作">
+            <div className="space-y-4">
+              <div className="flex bg-gray-100 p-1 rounded-lg">
+                 <button onClick={()=>setSavingActionForm({...savingActionForm, type:'deposit'})} className={`flex-1 py-2 text-sm font-bold rounded-md ${savingActionForm.type==='deposit'?'bg-white shadow text-blue-600':''}`}>存入</button>
+                 <button onClick={()=>setSavingActionForm({...savingActionForm, type:'withdraw'})} className={`flex-1 py-2 text-sm font-bold rounded-md ${savingActionForm.type==='withdraw'?'bg-white shadow text-orange-600':''}`}>挪用</button>
+                 <button onClick={()=>setSavingActionForm({...savingActionForm, type:'interest'})} className={`flex-1 py-2 text-sm font-bold rounded-md ${savingActionForm.type==='interest'?'bg-white shadow text-emerald-600':''}`}>領息</button>
+              </div>
+              <div><label className="block text-sm font-bold mb-1">日期</label><input type="date" className="w-full px-4 py-2 border rounded-xl" value={savingActionForm.date} onChange={e=>setSavingActionForm({...savingActionForm, date: e.target.value})}/></div>
+              <div><label className="block text-sm font-bold mb-1">金額</label><input type="number" className="w-full px-4 py-2 border rounded-xl" value={savingActionForm.amount} onChange={e=>setSavingActionForm({...savingActionForm, amount: e.target.value})}/></div>
+              <Button onClick={handleSavingAction} className="w-full bg-gray-800">確認執行</Button>
+            </div>
+          </Modal>
+          
+          <Modal isOpen={calForm.isOpen} onClose={() => setCalForm({...calForm, isOpen: false})} title={`記錄盈虧 (${calForm.dateStr})`}>
+            <div className="space-y-4">
+              <div><label className="block text-sm font-bold mb-1">盈虧金額</label><input type="number" className="w-full px-4 py-3 border rounded-xl" placeholder="正數賺，負數賠" value={calForm.amount} onChange={e => setCalForm({...calForm, amount: e.target.value})} /></div>
+              <Button onClick={() => { 
+                const amt = Number(calForm.amount); 
+                if (isNaN(amt) || calForm.amount === '') return setCalForm({...calForm, isOpen: false}); 
+                const baseVal = calendarMode === 'A' ? (totalBlockA || 1) : (totalDebt || 1); 
+                setCalendarRecords(prev => ({...prev, [calForm.key]: {amount: amt, percent: ((amt / baseVal) * 100).toFixed(2)}})); 
+                setCalForm({...calForm, isOpen: false}); 
+              }} className="w-full" variant={Number(calForm.amount) > 0 ? "danger" : "secondary"}>儲存紀錄</Button>
+            </div>
+          </Modal>
+
+          <Modal isOpen={msgBox.isOpen} onClose={() => setMsgBox({...msgBox, isOpen: false})} title="系統提示">
+            <div className="space-y-4 text-center pb-2">
+              <div className="text-gray-700 text-lg py-4 font-bold">{msgBox.text}</div>
+              <Button onClick={() => setMsgBox({...msgBox, isOpen: false})} className="w-full">了解</Button>
+            </div>
+          </Modal>
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<FinancialTracker />);
+  </script>
+</body>
+</html>
